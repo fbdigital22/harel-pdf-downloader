@@ -1,0 +1,16 @@
+{
+  "name": "harel-pdf-downloader",
+  "version": "1.0.0",
+  "description": "PDF downloader for Harel documents using Puppeteer",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",      // ספריית שרת
+    "puppeteer": "^21.6.1"     // ספריית דפדפן אוטומטי
+  },
+  "engines": {
+    "node": ">=18.x"
+  }
+}
