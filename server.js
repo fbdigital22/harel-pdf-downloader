@@ -15,7 +15,7 @@ app.get('/', (req, res) => {
 
 // ========== חלק 3: הפונקציה העיקרית ==========
 app.post('/download-pdf', async (req, res) => {
-  // משתמשים ב-password עבור "מספר סוכן" לצורך הפשטות
+  // password מייצג את "מספר סוכן" בשלב זה
   const { ticket, password = '85005' } = req.body; 
   
   if (!ticket) {
@@ -48,43 +48,37 @@ app.post('/download-pdf', async (req, res) => {
     const url = `https://digital.harel-group.co.il/generic-identification/?ticket=${ticket}`;
     await page.goto(url, { waitUntil: 'domcontentloaded' }); 
     
-    // 3. *** תיקון סופי: שימוש ב-ID מדויק עבור שדה הקלט (#tz0) ***
-    const agentCodeSelector = '#tz0'; 
-    await page.waitForSelector(agentCodeSelector, { timeout: 60000 });
+    // 3. *** מכינים את המאזינים לפני הפעולה שתפעיל אותם ***
+    // מכין את ה-Promise שמחכה לניווט לדף single-doc-viewer
+    const navigationPromise = page.waitForNavigation({ waitUntil: 'domcontentloaded' });
     
-    // מקליד את מספר הסוכן
-    await page.type(agentCodeSelector, password); 
-
-    // 4. *** תיקון סופי: שימוש ב-type="submit" עבור כפתור המשך ***
-    const continueButtonSelector = 'button[type="submit"]'; 
-    await page.waitForSelector(continueButtonSelector, { timeout: 10000 });
-    await page.click(continueButtonSelector);
-    
-    // 5. מחכה לשדה הסיסמה האמיתי לאחר המעבר
-    // נניח שזה שדה קלט אחר של סיסמה שמופיע בדף הבא.
-    const passwordSelector = 'input[type="password"]';
-    await page.waitForSelector(passwordSelector, { timeout: 30000 });
-    
-    // 6. מקליד את הסיסמה האמיתית
-    await page.type(passwordSelector, password); 
-    
-    // 7. מוצא את כפתור השליחה הסופי (כנראה אותו סלקטור)
-    const submitButton = await page.$('button[type="submit"]');
-    
-    // 8. מאזין לתשובה עם הPDF
+    // מכין את ה-Promise שמאזין לתגובת ה-PDF (זה הקובץ שאנחנו מחפשים)
     const pdfPromise = page.waitForResponse(
       response => response.url().includes('single-doc-viewer') && 
                   response.headers()['content-type']?.includes('pdf')
     );
     
-    // 9. לוחץ על כפתור השליחה הסופי
-    await submitButton.click();
+    // 4. שלב 1: הזנת מספר סוכן (#tz0)
+    const agentCodeSelector = '#tz0'; 
+    await page.waitForSelector(agentCodeSelector, { timeout: 60000 });
+    await page.type(agentCodeSelector, password); 
+
+    // 5. לוחץ על כפתור המשך (submit)
+    const continueButtonSelector = 'button[type="submit"]'; 
+    await page.click(continueButtonSelector);
     
-    // 10. מחכה לקובץ PDF ומקבל את התוכן שלו
+    // 6. *** ממתינים לטעינת הדף ולתגובת ה-PDF במקביל ***
+    // (הדף יטען ויבצע הורדה אוטומטית)
+    await Promise.all([
+        navigationPromise, // מחכה שהדף יעבור ל-single-doc-viewer
+        pdfPromise         // מחכה שתגובת ה-PDF תגיע
+    ]);
+    
+    // 7. מקבל את הבאפר של ה-PDF מתגובת הרשת
     const pdfResponse = await pdfPromise;
     const pdfBuffer = await pdfResponse.buffer();
     
-    // 11. ממיר לbase64 ושולח בחזרה
+    // 8. ממיר לbase64 ושולח בחזרה
     const base64Pdf = pdfBuffer.toString('base64');
     
     res.json({
@@ -95,10 +89,11 @@ app.post('/download-pdf', async (req, res) => {
     });
     
   } catch (error) {
+    // אם יש עדיין שגיאה, מציג אותה
     res.status(500).json({ success: false, error: error.message });
   } finally {
     if (browser) {
-      await browser.close();
+      await browser.close(); // סוגר את הדפדפן כדי לשחרר זיכרון
     }
   }
 });
