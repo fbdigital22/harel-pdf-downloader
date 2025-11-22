@@ -7,8 +7,8 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.18.2",      // ספריית שרת
-    "puppeteer": "^21.6.1"     // ספריית דפדפן אוטומטי
+    "express": "^4.18.2",
+    "puppeteer": "^21.6.1"
   },
   "engines": {
     "node": ">=18.x"
