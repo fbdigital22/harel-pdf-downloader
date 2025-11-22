@@ -1,6 +1,8 @@
 // ========== חלק 1: הגדרות בסיסיות ==========
-const express = require('express');        // ספריית שרת
-const puppeteer = require('puppeteer');    // ספריית דפדפן אוטומטי
+const express = require('express');
+// [שינוי 1]: מחליפים את Puppeteer הרגיל ב-puppeteer-core ומוסיפים את chromium
+const puppeteer = require('puppeteer-core');
+const chromium = require('@sparticuz/chromium'); 
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -24,10 +26,15 @@ app.post('/download-pdf', async (req, res) => {
   let browser;
   
   try {
+    // [שינוי 2]: עדכון פרמטרים ב-puppeteer.launch() לשימוש ב-Chromium המותאם
     // 1. פותח דפדפן
     browser = await puppeteer.launch({
-      headless: true,  // דפדפן נסתר (לא רואים חלון)
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      // משתמשים בנתיב ההפעלה שסופק ע"י @sparticuz/chromium
+      executablePath: await chromium.executablePath(), 
+      // משתמשים בהגדרות הראש ובארגומנטים הנדרשים לסביבת Render/Linux
+      headless: chromium.headless, 
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
     });
 
     const page = await browser.newPage();
