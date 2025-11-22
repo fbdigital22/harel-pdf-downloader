@@ -1,6 +1,5 @@
 // ========== חלק 1: הגדרות בסיסיות ==========
 const express = require('express');
-// ייבוא נכון: puppeteer-core ו-@sparticuz/chromium
 const puppeteer = require('puppeteer-core');
 const chromium = require('@sparticuz/chromium'); 
 
@@ -16,8 +15,8 @@ app.get('/', (req, res) => {
 
 // ========== חלק 3: הפונקציה העיקרית ==========
 app.post('/download-pdf', async (req, res) => {
-  // מקבל ticket (ואופציונלי: password) מ-Make
-  const { ticket, password = '85005' } = req.body;
+  // משתמשים ב-password עבור "מספר סוכן" לצורך הפשטות
+  const { ticket, password = '85005' } = req.body; 
   
   if (!ticket) {
     return res.status(400).json({ error: 'ticket is required' });
@@ -26,21 +25,16 @@ app.post('/download-pdf', async (req, res) => {
   let browser;
   
   try {
-    // 1. פותח דפדפן
-    // *** [התיקון הקריטי לשגיאת 502 OOM] ***
-    // הוספת ארגומנטים שמפחיתים צריכת זיכרון בשרתי ענן מוגבלים
+    // 1. פותח דפדפן (עם תיקוני 502/OOM ופתרון ל-Could not find Chrome)
     browser = await puppeteer.launch({
-      // הנתיב והגדרות הראש המותאמים לסביבת Render/Linux
       executablePath: await chromium.executablePath(), 
       headless: chromium.headless, 
       defaultViewport: chromium.defaultViewport,
-      
-      // הוספת ארגומנטים לשיפור ביצועים והפחתת זיכרון:
       args: [
-        ...chromium.args, // שומרים את הארגומנטים הבסיסיים של החבילה
-        '--no-sandbox', // נחוץ בסביבות מוגבלות
+        ...chromium.args,
+        '--no-sandbox',
         '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage', // מונע קריסות OOM!
+        '--disable-dev-shm-usage',
         '--disable-accelerated-2d-canvas',
         '--no-zygote',
         '--single-process',
@@ -50,34 +44,50 @@ app.post('/download-pdf', async (req, res) => {
 
     const page = await browser.newPage();
     
-    // 2. נכנס לעמוד של הראל
-    const url = `https://ngapps.harel-group.co.il/single-doc-viewer/?ticket=${ticket}`;
-    await page.goto(url, { waitUntil: 'networkidle0' });
+    // 2. נכנס לעמוד הכניסה הנכון
+    const url = `https://digital.harel-group.co.il/generic-identification/?ticket=${ticket}`;
+    await page.goto(url, { waitUntil: 'domcontentloaded' }); 
     
-    // 3. מחכה לשדה הסיסמה
-    await page.waitForSelector('input[type="password"]');
+    // 3. *** שלב חדש: מחכה ומקליד את מספר הסוכן ***
+    // מניח שהסלקטור הוא input כלשהו בתוך ה-div של השדה
+    const agentCodeSelector = 'input[type="tel"]'; // נפוץ לשימוש במספרים
+    await page.waitForSelector(agentCodeSelector, { timeout: 60000 });
     
-    // 4. מקליד את הסיסמה (005 או מה ששלחת)
-    await page.type('input[type="password"]', password);
+    // מקליד את מה ששלחנו כ-password לשדה מספר סוכן
+    await page.type(agentCodeSelector, password); 
+
+    // 4. *** שלב חדש: לוחץ על כפתור "המשך" ***
+    // מחפש כפתור עם טקסט 'המשך'
+    const continueButtonSelector = 'button:has-text("המשך")'; 
+    await page.waitForSelector(continueButtonSelector, { timeout: 10000 });
+    await page.click(continueButtonSelector);
     
-    // 5. מוצא את כפתור השליחה
+    // 5. *** שלב חדש: מחכה לשדה הסיסמה האמיתי לאחר המעבר ***
+    // (הדף השני לאחר הלחיצה)
+    // מחכים לשדה הסיסמה האמיתי שסביר להניח מופיע כעת
+    const passwordSelector = 'input[type="password"]';
+    await page.waitForSelector(passwordSelector, { timeout: 30000 });
+    
+    // 6. מקליד את הסיסמה שוב (בשלב זה זו הסיסמה האמיתית 85005)
+    await page.type(passwordSelector, password); 
+    
+    // 7. מוצא את כפתור השליחה
     const submitButton = await page.$('button[type="submit"]');
     
-    // 6. מאזין לתשובה עם הPDF
-    // ממתינים לתגובה מהשרת שכוללת סוג תוכן PDF
+    // 8. מאזין לתשובה עם הPDF
     const pdfPromise = page.waitForResponse(
       response => response.url().includes('single-doc-viewer') && 
                   response.headers()['content-type']?.includes('pdf')
     );
     
-    // 7. לוחץ על הכפתור
+    // 9. לוחץ על כפתור השליחה הסופי
     await submitButton.click();
     
-    // 8. מחכה לקובץ PDF ומקבל את התוכן שלו
+    // 10. מחכה לקובץ PDF ומקבל את התוכן שלו
     const pdfResponse = await pdfPromise;
     const pdfBuffer = await pdfResponse.buffer();
     
-    // 9. ממיר לbase64 ושולח בחזרה
+    // 11. ממיר לbase64 ושולח בחזרה
     const base64Pdf = pdfBuffer.toString('base64');
     
     res.json({
@@ -88,7 +98,7 @@ app.post('/download-pdf', async (req, res) => {
     });
     
   } catch (error) {
-    // מדווח על שגיאה במקרה של תקלה (כמו timeout או תקלת Puppeteer)
+    // אם יש עדיין שגיאה, מציג אותה
     res.status(500).json({ success: false, error: error.message });
   } finally {
     if (browser) {
