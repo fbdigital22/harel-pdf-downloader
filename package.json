@@ -4,8 +4,7 @@
   "description": "PDF downloader for Harel documents using Puppeteer",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "postinstall": "npx puppeteer browsers install chrome"
+    "start": "node server.js"
   },
   "dependencies": {
     "express": "^4.18.2",
