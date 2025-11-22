@@ -15,7 +15,6 @@ app.get('/', (req, res) => {
 
 // ========== חלק 3: הפונקציה העיקרית ==========
 app.post('/download-pdf', async (req, res) => {
-  // משתמשים ב-password עבור "מספר סוכן" לצורך הפשטות
   const { ticket, password = '85005' } = req.body; 
   
   if (!ticket) {
@@ -25,7 +24,7 @@ app.post('/download-pdf', async (req, res) => {
   let browser;
   
   try {
-    // 1. פותח דפדפן (עם תיקוני 502/OOM ופתרון ל-Could not find Chrome)
+    // 1. פותח דפדפן (עם תיקוני OOM/יציבות)
     browser = await puppeteer.launch({
       executablePath: await chromium.executablePath(), 
       headless: chromium.headless, 
@@ -48,30 +47,28 @@ app.post('/download-pdf', async (req, res) => {
     const url = `https://digital.harel-group.co.il/generic-identification/?ticket=${ticket}`;
     await page.goto(url, { waitUntil: 'domcontentloaded' }); 
     
-    // 3. *** שלב חדש: מחכה ומקליד את מספר הסוכן ***
-    // מניח שהסלקטור הוא input כלשהו בתוך ה-div של השדה
-    const agentCodeSelector = 'input[type="tel"]'; // נפוץ לשימוש במספרים
+    // 3. *** תיקון סלקטור 1: שינוי ל-input[type="text"] ***
+    // מחפש את שדה מספר הסוכן
+    const agentCodeSelector = 'input[type="text"]'; 
     await page.waitForSelector(agentCodeSelector, { timeout: 60000 });
     
-    // מקליד את מה ששלחנו כ-password לשדה מספר סוכן
+    // מקליד את מספר הסוכן
     await page.type(agentCodeSelector, password); 
 
-    // 4. *** שלב חדש: לוחץ על כפתור "המשך" ***
-    // מחפש כפתור עם טקסט 'המשך'
-    const continueButtonSelector = 'button:has-text("המשך")'; 
+    // 4. *** תיקון סלקטור 2: מחפש כפתור submit (או הכפתור הראשי) ***
+    // מניח שכפתור 'המשך' הוא כפתור submit
+    const continueButtonSelector = 'button[type="submit"]'; 
     await page.waitForSelector(continueButtonSelector, { timeout: 10000 });
     await page.click(continueButtonSelector);
     
-    // 5. *** שלב חדש: מחכה לשדה הסיסמה האמיתי לאחר המעבר ***
-    // (הדף השני לאחר הלחיצה)
-    // מחכים לשדה הסיסמה האמיתי שסביר להניח מופיע כעת
+    // 5. מחכה לשדה הסיסמה האמיתי לאחר המעבר
     const passwordSelector = 'input[type="password"]';
     await page.waitForSelector(passwordSelector, { timeout: 30000 });
     
-    // 6. מקליד את הסיסמה שוב (בשלב זה זו הסיסמה האמיתית 85005)
+    // 6. מקליד את הסיסמה האמיתית
     await page.type(passwordSelector, password); 
     
-    // 7. מוצא את כפתור השליחה
+    // 7. מוצא את כפתור השליחה הסופי (כנראה אותו סלקטור)
     const submitButton = await page.$('button[type="submit"]');
     
     // 8. מאזין לתשובה עם הPDF
@@ -98,11 +95,10 @@ app.post('/download-pdf', async (req, res) => {
     });
     
   } catch (error) {
-    // אם יש עדיין שגיאה, מציג אותה
     res.status(500).json({ success: false, error: error.message });
   } finally {
     if (browser) {
-      await browser.close();  // סוגר את הדפדפן כדי לשחרר זיכרון
+      await browser.close();
     }
   }
 });
