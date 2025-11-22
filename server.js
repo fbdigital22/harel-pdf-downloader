@@ -15,7 +15,6 @@ app.get('/', (req, res) => {
 
 // ========== חלק 3: הפונקציה העיקרית ==========
 app.post('/download-pdf', async (req, res) => {
-  // password מייצג את "מספר סוכן" בשלב זה
   const { ticket, password = '85005' } = req.body; 
   
   if (!ticket) {
@@ -49,10 +48,13 @@ app.post('/download-pdf', async (req, res) => {
     await page.goto(url, { waitUntil: 'domcontentloaded' }); 
     
     // 3. *** מכינים את המאזינים לפני הפעולה שתפעיל אותם ***
-    // מכין את ה-Promise שמחכה לניווט לדף single-doc-viewer
-    const navigationPromise = page.waitForNavigation({ waitUntil: 'domcontentloaded' });
+    // מחכה לניווט (URL חדש) - עם timeout מוגדל ו-networkidle2
+    const navigationPromise = page.waitForNavigation({ 
+        waitUntil: 'networkidle2', 
+        timeout: 60000 // הגדלת זמן ההמתנה ל-60 שניות
+    });
     
-    // מכין את ה-Promise שמאזין לתגובת ה-PDF (זה הקובץ שאנחנו מחפשים)
+    // מכין את ה-Promise שמאזין לתגובת ה-PDF
     const pdfPromise = page.waitForResponse(
       response => response.url().includes('single-doc-viewer') && 
                   response.headers()['content-type']?.includes('pdf')
@@ -68,9 +70,8 @@ app.post('/download-pdf', async (req, res) => {
     await page.click(continueButtonSelector);
     
     // 6. *** ממתינים לטעינת הדף ולתגובת ה-PDF במקביל ***
-    // (הדף יטען ויבצע הורדה אוטומטית)
     await Promise.all([
-        navigationPromise, // מחכה שהדף יעבור ל-single-doc-viewer
+        navigationPromise, // מחכה שהדף יעבור ל-single-doc-viewer (עד שרשת רגועה)
         pdfPromise         // מחכה שתגובת ה-PDF תגיע
     ]);
     
