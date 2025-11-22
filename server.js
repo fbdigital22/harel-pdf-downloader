@@ -15,6 +15,7 @@ app.get('/', (req, res) => {
 
 // ========== חלק 3: הפונקציה העיקרית ==========
 app.post('/download-pdf', async (req, res) => {
+  // משתמשים ב-password עבור "מספר סוכן" לצורך הפשטות
   const { ticket, password = '85005' } = req.body; 
   
   if (!ticket) {
@@ -47,21 +48,20 @@ app.post('/download-pdf', async (req, res) => {
     const url = `https://digital.harel-group.co.il/generic-identification/?ticket=${ticket}`;
     await page.goto(url, { waitUntil: 'domcontentloaded' }); 
     
-    // 3. *** תיקון סלקטור 1: שינוי ל-input[type="text"] ***
-    // מחפש את שדה מספר הסוכן
-    const agentCodeSelector = 'input[type="text"]'; 
+    // 3. *** תיקון סופי: שימוש ב-ID מדויק עבור שדה הקלט (#tz0) ***
+    const agentCodeSelector = '#tz0'; 
     await page.waitForSelector(agentCodeSelector, { timeout: 60000 });
     
     // מקליד את מספר הסוכן
     await page.type(agentCodeSelector, password); 
 
-    // 4. *** תיקון סלקטור 2: מחפש כפתור submit (או הכפתור הראשי) ***
-    // מניח שכפתור 'המשך' הוא כפתור submit
+    // 4. *** תיקון סופי: שימוש ב-type="submit" עבור כפתור המשך ***
     const continueButtonSelector = 'button[type="submit"]'; 
     await page.waitForSelector(continueButtonSelector, { timeout: 10000 });
     await page.click(continueButtonSelector);
     
     // 5. מחכה לשדה הסיסמה האמיתי לאחר המעבר
+    // נניח שזה שדה קלט אחר של סיסמה שמופיע בדף הבא.
     const passwordSelector = 'input[type="password"]';
     await page.waitForSelector(passwordSelector, { timeout: 30000 });
     
