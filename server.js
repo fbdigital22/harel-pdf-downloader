@@ -1,6 +1,6 @@
 // ========== חלק 1: הגדרות בסיסיות ==========
 const express = require('express');
-// [שינוי 1]: מחליפים את Puppeteer הרגיל ב-puppeteer-core ומוסיפים את chromium
+// ייבוא נכון: puppeteer-core ו-@sparticuz/chromium
 const puppeteer = require('puppeteer-core');
 const chromium = require('@sparticuz/chromium'); 
 
@@ -26,15 +26,26 @@ app.post('/download-pdf', async (req, res) => {
   let browser;
   
   try {
-    // [שינוי 2]: עדכון פרמטרים ב-puppeteer.launch() לשימוש ב-Chromium המותאם
     // 1. פותח דפדפן
+    // *** [התיקון הקריטי לשגיאת 502 OOM] ***
+    // הוספת ארגומנטים שמפחיתים צריכת זיכרון בשרתי ענן מוגבלים
     browser = await puppeteer.launch({
-      // משתמשים בנתיב ההפעלה שסופק ע"י @sparticuz/chromium
+      // הנתיב והגדרות הראש המותאמים לסביבת Render/Linux
       executablePath: await chromium.executablePath(), 
-      // משתמשים בהגדרות הראש ובארגומנטים הנדרשים לסביבת Render/Linux
       headless: chromium.headless, 
-      args: chromium.args,
       defaultViewport: chromium.defaultViewport,
+      
+      // הוספת ארגומנטים לשיפור ביצועים והפחתת זיכרון:
+      args: [
+        ...chromium.args, // שומרים את הארגומנטים הבסיסיים של החבילה
+        '--no-sandbox', // נחוץ בסביבות מוגבלות
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage', // מונע קריסות OOM!
+        '--disable-accelerated-2d-canvas',
+        '--no-zygote',
+        '--single-process',
+        '--disable-gpu',
+      ],
     });
 
     const page = await browser.newPage();
@@ -53,6 +64,7 @@ app.post('/download-pdf', async (req, res) => {
     const submitButton = await page.$('button[type="submit"]');
     
     // 6. מאזין לתשובה עם הPDF
+    // ממתינים לתגובה מהשרת שכוללת סוג תוכן PDF
     const pdfPromise = page.waitForResponse(
       response => response.url().includes('single-doc-viewer') && 
                   response.headers()['content-type']?.includes('pdf')
@@ -61,7 +73,7 @@ app.post('/download-pdf', async (req, res) => {
     // 7. לוחץ על הכפתור
     await submitButton.click();
     
-    // 8. מחכה לקובץ PDF
+    // 8. מחכה לקובץ PDF ומקבל את התוכן שלו
     const pdfResponse = await pdfPromise;
     const pdfBuffer = await pdfResponse.buffer();
     
@@ -76,10 +88,11 @@ app.post('/download-pdf', async (req, res) => {
     });
     
   } catch (error) {
+    // מדווח על שגיאה במקרה של תקלה (כמו timeout או תקלת Puppeteer)
     res.status(500).json({ success: false, error: error.message });
   } finally {
     if (browser) {
-      await browser.close();  // סוגר את הדפדפן
+      await browser.close();  // סוגר את הדפדפן כדי לשחרר זיכרון
     }
   }
 });
