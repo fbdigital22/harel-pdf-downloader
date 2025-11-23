@@ -4,7 +4,7 @@ const chromium = require('@sparticuz/chromium');
 const fs = require('fs');
 const path = require('path');
 const { promisify } = require('util');
-const pdf = require('pdf-parse'); // ייבוא ספריית הניתוח
+const pdf = require('pdf-parse'); // ייבוא ספריית ניתוח PDF
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -12,6 +12,7 @@ const sleep = promisify(setTimeout);
 
 app.use(express.json());
 
+// נתיב ההורדה הזמני (ב-Render מותר לכתוב ל-/tmp)
 const DOWNLOAD_PATH = '/tmp/downloads';
 if (!fs.existsSync(DOWNLOAD_PATH)) {
     fs.mkdirSync(DOWNLOAD_PATH, { recursive: true });
@@ -25,6 +26,7 @@ app.post('/download-pdf', async (req, res) => {
 
     if (!ticket) return res.status(400).json({ error: 'ticket is required' });
 
+    // ניקוי קבצים ישנים
     fs.readdirSync(DOWNLOAD_PATH).forEach(f => fs.unlinkSync(path.join(DOWNLOAD_PATH, f)));
 
     let browser;
@@ -46,25 +48,29 @@ app.post('/download-pdf', async (req, res) => {
 
         const page = await browser.newPage();
         
+        // הגדרת התנהגות הורדה לדיסק (CDP Session)
         const client = await page.target().createCDPSession();
         await client.send('Page.setDownloadBehavior', {
             behavior: 'allow',
             downloadPath: DOWNLOAD_PATH,
         });
 
+        console.log(`Navigating to Harel...`);
         const url = `https://digital.harel-group.co.il/generic-identification/?ticket=${ticket}`;
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
+        console.log('Typing agent code...');
         const agentCodeSelector = '#tz0';
         await page.waitForSelector(agentCodeSelector, { timeout: 15000 });
         await page.type(agentCodeSelector, password);
 
+        console.log('Clicking submit & Waiting for file...');
         const continueButtonSelector = 'button[type="submit"]';
         await page.click(continueButtonSelector);
 
         // 2. המתנה להורדה לדיסק
         let downloadedFile = null;
-        const maxWaitTime = 60000; 
+        const maxWaitTime = 60000; // מקסימום דקה
         const startTime = Date.now();
 
         while (Date.now() - startTime < maxWaitTime) {
@@ -91,23 +97,20 @@ app.post('/download-pdf', async (req, res) => {
         const data = await pdf(pdfBuffer);
         const rawText = data.text;
         
-        // **** טיפ לווידוא: הדפס את כל הטקסט הגולמי ללוגים ****
-        // הדבר הזה יאפשר לך לראות אם ה-RegEx עובד נכון.
-        // אם הנתונים לא נשלפים, הסתכל בלוגים כדי לראות את הרווחים והמעברי שורה בטקסט הגולמי.
+        // הדפסת הטקסט הגולמי ללוגים לצורך דיבוג
         console.log('--- RAW TEXT FOR DEBUGGING (Start) ---');
-        console.log(rawText.substring(0, 1000)); // מדפיס רק את 1000 התווים הראשונים
+        console.log(rawText.substring(0, 1000));
         console.log('--- RAW TEXT FOR DEBUGGING (End) ---');
         
-        // חילוץ נתון 1: מספר חשבון (מספר תכנית)
-        // התבנית מחפשת אחרי "חשבון" ואז רווחים ואז קבוצת מספרים
-        const accNumRegex = /מספר חשבון\s*(\d+)/;
+        // *** 🛠️ חילוץ נתון 1: מספר חשבון ***
+        // תוקן: מחפש אחרי המילה "חשבון" ואז קבוצת ספרות.
+        const accNumRegex = /חשבון\s*(\d+)/; 
         const accMatch = accNumRegex.exec(rawText);
         const accountNumber = accMatch && accMatch[1] ? accMatch[1].trim() : 'Not Found';
 
-        // חילוץ נתון 2: סכום סה"כ לתשלום (318.71 ₪)
-        // התבנית מחפשת אחרי "סה"כ:" ואז סימן ₪ ואז המספר
-        // (משתמשים ב-\s* לכל סוגי הרווחים)
-        const totalAmountRegex = /סה"כ:\s*₪\s*([\d\.\,]+)/;
+        // *** 🛠️ חילוץ נתון 2: סכום סה"כ לתשלום ***
+        // תוקן: אין רווח בין ₪ למספר בטקסט הגולמי, כך שהוסר \s* בין ₪ למספר.
+        const totalAmountRegex = /סה"כ:\s*₪([\d\.\,]+)/; 
         const totalMatch = totalAmountRegex.exec(rawText);
         
         let totalAmount = totalMatch && totalMatch[1] ? totalMatch[1].trim().replace(/,/g, '') : 'Amount Not Found'; 
@@ -131,10 +134,11 @@ app.post('/download-pdf', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error:', error.message);
+        console.error('Final Error:', error.message);
         res.status(500).json({ success: false, error: error.message });
     } finally {
         if (browser) await browser.close();
+        // ניקוי תיקיית ההורדות בסוף
         try {
             if (fs.existsSync(DOWNLOAD_PATH)) {
                 fs.readdirSync(DOWNLOAD_PATH).forEach(f => fs.unlinkSync(path.join(DOWNLOAD_PATH, f)));
