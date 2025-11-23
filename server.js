@@ -2,19 +2,19 @@
 const express = require('express');
 const puppeteer = require('puppeteer-core');
 const chromium = require('@sparticuz/chromium'); 
+// הוספנו את 'axios' ו-'fs' כדי להוריד את הקובץ ישירות
+const axios = require('axios'); 
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// מאפשר קריאת גוף הבקשה
 app.use(express.json());
 
-// בדיקת שרת
-app.get('/', (req, res) => res.send('Server is Up & Running'));
+app.get('/', (req, res) => res.send('Server is Up'));
 
 // ========== הפונקציה להורדת ה-PDF ==========
 app.post('/download-pdf', async (req, res) => {
-  console.log('--- התחלת תהליך הורדה (גרסה מתוקנת) ---');
+  console.log('--- התחלת תהליך הורדה (גרסה עוקפת דפדפן) ---');
   const { ticket, password = '85005' } = req.body;
   
   if (!ticket) return res.status(400).json({ error: 'ticket is required' });
@@ -39,8 +39,6 @@ app.post('/download-pdf', async (req, res) => {
     });
 
     const page = await browser.newPage();
-    
-    // User Agent כדי להיראות כמו דפדפן רגיל
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36');
 
     // 2. כניסה לדף
@@ -49,62 +47,70 @@ app.post('/download-pdf', async (req, res) => {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }); 
     
     // 3. הזנת מספר סוכן (#tz0)
-    console.log('Searching for agent input...');
+    console.log('Entering agent code...');
     const agentCodeSelector = '#tz0'; 
     await page.waitForSelector(agentCodeSelector, { timeout: 15000 });
     await page.type(agentCodeSelector, password); 
 
-    // 4. *** המסננת החכמה ***
-    // אנחנו מגדירים למה אנחנו מחכים לפני הלחיצה
-    const pdfPromise = page.waitForResponse(response => {
-        // בדיקה 1: האם ה-URL נכון?
-        const isUrlMatch = response.url().includes('single-doc-viewer');
-        
-        // בדיקה 2: האם זה קובץ PDF?
-        const contentType = response.headers()['content-type'];
-        const isPdf = contentType && contentType.toLowerCase().includes('pdf');
-        
-        // בדיקה 3 (התיקון החדש): האם הבקשה הצליחה (200) והיא לא preflight?
-        // אנחנו רוצים רק סטטוס 200. לא 204, לא 302, ולא OPTIONS.
-        const isStatusOk = response.status() === 200;
-        const isMethodGet = response.request().method() === 'GET';
-
-        // לוגים לצורך דיבוג - יופיעו ב-Render אם משהו לא עובד
-        if (isUrlMatch) {
-            console.log(`Potential Match Found: Status=${response.status()}, Method=${response.request().method()}, Type=${contentType}`);
+    // 4. האזנה לכתובת ה-PDF (אבל לא לתוכן!)
+    // אנחנו רק רוצים לדעת מה ה-URL הסופי המדויק
+    let pdfUrl = null;
+    
+    // אנחנו מפעילים יירוט בקשות כדי לתפוס את ה-URL של ה-PDF
+    await page.setRequestInterception(true);
+    
+    page.on('request', request => {
+        // אם זו הבקשה ל-PDF, נשמור את ה-URL ונבטל את הבקשה בדפדפן (כדי למנוע הורדה כפולה/שגיאה)
+        if (request.url().includes('single-doc-viewer') && !pdfUrl) {
+            console.log('Captured PDF URL:', request.url());
+            pdfUrl = request.url();
+            request.abort(); // עוצרים את הדפדפן מלהוריד בעצמו!
+        } else {
+            request.continue();
         }
-
-        return isUrlMatch && isPdf && isStatusOk && isMethodGet;
-    }, { timeout: 60000 }); // מחכים עד 60 שניות לקובץ
+    });
 
     // 5. לחיצה על כפתור "המשך"
     console.log('Clicking submit...');
     const continueButtonSelector = 'button[type="submit"]'; 
     await page.click(continueButtonSelector);
     
-    // 6. המתנה לקובץ האמיתי
-    console.log('Waiting for PDF response packet...');
-    const pdfResponse = await pdfPromise;
-    
-    if (!pdfResponse) {
-        throw new Error('PDF response was null or timed out');
+    // 6. מחכים עד שנתפוס את ה-URL
+    console.log('Waiting for PDF URL capture...');
+    // לולאה פשוטה שתחכה עד ש-pdfUrl יתמלא (עד 30 שניות)
+    const startTime = Date.now();
+    while (!pdfUrl && (Date.now() - startTime < 30000)) {
+        await new Promise(r => setTimeout(r, 500));
     }
 
-    // ניסיון קריאה זהיר
-    console.log('PDF packet matched! Status:', pdfResponse.status());
-    
-    // הוספנו פה בדיקה אם הקריאה נכשלת למרות הכל
-    let pdfBuffer;
-    try {
-        pdfBuffer = await pdfResponse.buffer();
-    } catch (bufferError) {
-        console.error('Failed to read buffer:', bufferError);
-        throw new Error(`Buffer read failed: ${bufferError.message}`);
+    if (!pdfUrl) {
+        throw new Error('Timeout: Could not capture PDF URL');
     }
-    
-    console.log(`Downloaded ${pdfBuffer.length} bytes.`);
 
-    // 7. המרה ושליחה
+    // 7. שלב הקסם: שימוש ב-Cookies להורדה ישירה
+    // עכשיו שיש לנו את ה-URL ואנחנו מחוברים, ניקח את ה-Cookies
+    console.log('Getting cookies...');
+    const cookies = await page.cookies();
+    
+    // ממירים את העוגיות לפורמט ש-Axios מבין
+    const cookieString = cookies.map(cookie => `${cookie.name}=${cookie.value}`).join('; ');
+
+    console.log('Downloading directly via Axios...');
+    // מורידים את הקובץ ישירות מהשרת, עוקפים את מנגנון ההורדה של Chrome
+    const response = await axios({
+        method: 'GET',
+        url: pdfUrl,
+        headers: {
+            'Cookie': cookieString,
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
+        },
+        responseType: 'arraybuffer' // חשוב מאוד כדי לקבל את הקובץ הבינארי
+    });
+
+    console.log('Download complete via Axios!');
+    const pdfBuffer = Buffer.from(response.data);
+
+    // 8. המרה ושליחה
     const base64Pdf = pdfBuffer.toString('base64');
     
     res.json({
@@ -116,6 +122,10 @@ app.post('/download-pdf', async (req, res) => {
     
   } catch (error) {
     console.error('Final Error:', error.message);
+    // אם זו שגיאה של Axios, נדפיס פרטים נוספים
+    if (error.response) {
+        console.error('Axios Error Data:', error.response.data.toString());
+    }
     res.status(500).json({ success: false, error: error.message });
   } finally {
     if (browser) await browser.close();
