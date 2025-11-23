@@ -22,7 +22,8 @@ app.get('/', (req, res) => res.send('PDF Downloader with Data Extraction is Read
 
 app.post('/download-pdf', async (req, res) => {
     console.log('--- התחלת תהליך (עם חילוץ נתונים מושלם) ---');
-    const { ticket, password = '85005' } = req.body;
+    // מקבלים את ה-password מה-Body של הבקשה; ברירת המחדל היא 85005
+    const { ticket, password = '85005' } = req.body; 
 
     if (!ticket) return res.status(400).json({ error: 'ticket is required' });
 
@@ -55,11 +56,11 @@ app.post('/download-pdf', async (req, res) => {
             downloadPath: DOWNLOAD_PATH,
         });
 
-        console.log(`Navigating to Harel...`);
+        console.log(`Navigating to Harel with ticket: ${ticket}`);
         const url = `https://digital.harel-group.co.il/generic-identification/?ticket=${ticket}`;
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-        console.log('Typing agent code...');
+        console.log(`Typing agent code: ${password}`);
         const agentCodeSelector = '#tz0';
         await page.waitForSelector(agentCodeSelector, { timeout: 15000 });
         await page.type(agentCodeSelector, password);
@@ -70,7 +71,7 @@ app.post('/download-pdf', async (req, res) => {
 
         // 2. המתנה להורדה לדיסק
         let downloadedFile = null;
-        const maxWaitTime = 60000; 
+        const maxWaitTime = 60000; // מקסימום דקה
         const startTime = Date.now();
 
         while (Date.now() - startTime < maxWaitTime) {
@@ -108,12 +109,13 @@ app.post('/download-pdf', async (req, res) => {
         const accMatch = accNumRegex.exec(rawText);
         const accountNumber = accMatch && accMatch[1] ? accMatch[1].trim() : 'Not Found';
 
-        // *** 🛠️ חילוץ נתון 2: סכום סה"כ לתשלום (מותאם לקידוד הפוך) ***
-        // התבנית תופסת את המספר (מודבק ל-₪) ואז בודקת שהוא מלווה ב-'סה"כ'
-        const totalAmountRegex = /₪([\d\.]+)\s*סה"כ/; 
+        // *** 🛠️ חילוץ נתון 2: סכום סה"כ לתשלום (מותאם לקידוד הפוך ופסיקים) ***
+        // התבנית תופסת את המספר (מודבק ל-₪, כולל פסיקים/נקודות) ואז בודקת שהוא מלווה ב-'סה"כ'
+        const totalAmountRegex = /₪([\d\.\,]+)\s*סה"כ/; 
         const totalMatch = totalAmountRegex.exec(rawText);
         
-        let totalAmount = totalMatch && totalMatch[1] ? totalMatch[1].trim() : 'Amount Not Found'; 
+        // מנקים פסיקים לפני שמירת הסכום
+        let totalAmount = totalMatch && totalMatch[1] ? totalMatch[1].trim().replace(/,/g, '') : 'Amount Not Found'; 
         
         console.log(`Extracted Account Number: ${accountNumber}`);
         console.log(`Extracted Total Amount: ${totalAmount}`);
