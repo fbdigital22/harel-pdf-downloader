@@ -21,7 +21,7 @@ if (!fs.existsSync(DOWNLOAD_PATH)) {
 app.get('/', (req, res) => res.send('PDF Downloader with Data Extraction is Ready'));
 
 app.post('/download-pdf', async (req, res) => {
-    console.log('--- התחלת תהליך (עם חילוץ נתונים) ---');
+    console.log('--- התחלת תהליך (עם חילוץ נתונים מושלם) ---');
     const { ticket, password = '85005' } = req.body;
 
     if (!ticket) return res.status(400).json({ error: 'ticket is required' });
@@ -31,7 +31,7 @@ app.post('/download-pdf', async (req, res) => {
 
     let browser;
     try {
-        // 1. הגדרות Puppeteer
+        // 1. הגדרות Puppeteer והכנה להורדה
         browser = await puppeteer.launch({
             executablePath: await chromium.executablePath(),
             headless: chromium.headless,
@@ -70,7 +70,7 @@ app.post('/download-pdf', async (req, res) => {
 
         // 2. המתנה להורדה לדיסק
         let downloadedFile = null;
-        const maxWaitTime = 60000; // מקסימום דקה
+        const maxWaitTime = 60000; 
         const startTime = Date.now();
 
         while (Date.now() - startTime < maxWaitTime) {
@@ -97,23 +97,23 @@ app.post('/download-pdf', async (req, res) => {
         const data = await pdf(pdfBuffer);
         const rawText = data.text;
         
-        // הדפסת הטקסט הגולמי ללוגים לצורך דיבוג
+        // הדפסת הטקסט הגולמי ללוגים לצורך וידוא
         console.log('--- RAW TEXT FOR DEBUGGING (Start) ---');
         console.log(rawText.substring(0, 1000));
         console.log('--- RAW TEXT FOR DEBUGGING (End) ---');
         
-        // *** 🛠️ חילוץ נתון 1: מספר חשבון ***
-        // תוקן: מחפש אחרי המילה "חשבון" ואז קבוצת ספרות.
-        const accNumRegex = /חשבון\s*(\d+)/; 
+        // *** 🛠️ חילוץ נתון 1: מספר חשבון (מותאם לקידוד הפוך) ***
+        // התבנית תופסת סדרת ספרות ואז בודקת שהיא מלווה ב-'מספר חשבון'
+        const accNumRegex = /(\d+)\s*מספר\s*חשבון/; 
         const accMatch = accNumRegex.exec(rawText);
         const accountNumber = accMatch && accMatch[1] ? accMatch[1].trim() : 'Not Found';
 
-        // *** 🛠️ חילוץ נתון 2: סכום סה"כ לתשלום ***
-        // תוקן: אין רווח בין ₪ למספר בטקסט הגולמי, כך שהוסר \s* בין ₪ למספר.
-        const totalAmountRegex = /סה"כ:\s*₪([\d\.\,]+)/; 
+        // *** 🛠️ חילוץ נתון 2: סכום סה"כ לתשלום (מותאם לקידוד הפוך) ***
+        // התבנית תופסת את המספר (מודבק ל-₪) ואז בודקת שהוא מלווה ב-'סה"כ'
+        const totalAmountRegex = /₪([\d\.]+)\s*סה"כ/; 
         const totalMatch = totalAmountRegex.exec(rawText);
         
-        let totalAmount = totalMatch && totalMatch[1] ? totalMatch[1].trim().replace(/,/g, '') : 'Amount Not Found'; 
+        let totalAmount = totalMatch && totalMatch[1] ? totalMatch[1].trim() : 'Amount Not Found'; 
         
         console.log(`Extracted Account Number: ${accountNumber}`);
         console.log(`Extracted Total Amount: ${totalAmount}`);
