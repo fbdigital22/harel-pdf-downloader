@@ -21,7 +21,7 @@ if (!fs.existsSync(DOWNLOAD_PATH)) {
 app.get('/', (req, res) => res.send('PDF Downloader with Data Extraction is Ready'));
 
 app.post('/download-pdf', async (req, res) => {
-    console.log('--- התחלת תהליך (עם חילוץ נתונים מושלם) ---');
+    console.log('--- התחלת תהליך (קוד סופי) ---');
     // מקבלים את ה-password מה-Body של הבקשה; ברירת המחדל היא 85005
     const { ticket, password = '85005' } = req.body; 
 
@@ -103,9 +103,9 @@ app.post('/download-pdf', async (req, res) => {
         console.log(rawText.substring(0, 1000));
         console.log('--- RAW TEXT FOR DEBUGGING (End) ---');
         
-        // *** 🛠️ חילוץ נתון 1: מספר חשבון (מותאם לקידוד הפוך) ***
-        // התבנית תופסת סדרת ספרות ואז בודקת שהיא מלווה ב-'מספר חשבון'
-        const accNumRegex = /(\d+)\s*מספר\s*חשבון/; 
+        // *** 🛠️ חילוץ נתון 1: מספר חשבון (מותאם למיקום החדש) ***
+        // תופס סדרת ספרות המופיעה **מיד לפני** המילה 'מחשבון' בטקסט הגולמי.
+        const accNumRegex = /(\d+)מחשבון/; 
         const accMatch = accNumRegex.exec(rawText);
         const accountNumber = accMatch && accMatch[1] ? accMatch[1].trim() : 'Not Found';
 
