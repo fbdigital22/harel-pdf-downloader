@@ -21,8 +21,8 @@ if (!fs.existsSync(DOWNLOAD_PATH)) {
 app.get('/', (req, res) => res.send('PDF Downloader with Data Extraction is Ready'));
 
 app.post('/download-pdf', async (req, res) => {
-    console.log('--- התחלת תהליך (קוד סופי) ---');
-    // מקבלים את ה-password מה-Body של הבקשה; ברירת המחדל היא 85005
+    console.log('--- התחלת תהליך (קוד סופי ומושלם) ---');
+    
     const { ticket, password = '85005' } = req.body; 
 
     if (!ticket) return res.status(400).json({ error: 'ticket is required' });
@@ -122,8 +122,9 @@ app.post('/download-pdf', async (req, res) => {
         const accMatch = accNumRegex.exec(rawText);
         const accountNumber = accMatch && accMatch[1] ? accMatch[1].trim() : 'Not Found';
 
-        // *** 🆕 חילוץ נתון 3: תאריך העסקה (DD/MM/YYYY) ***
-        const dateRegex = /(\d{1,2}\/\d{1,2}\/\d{4})/; 
+        // *** 🛠️ חילוץ נתון 3: תאריך העסקה (ממוקד ל-'כי ביום' לנטרול כותרת) ***
+        // מחפש את התאריך שמופיע אחרי "כי ביום", עם גמישות לרווחים
+        const dateRegex = /כי ביום\s*(\d{1,2}\/\d{1,2}\/\d{4})/; 
         const dateMatch = dateRegex.exec(rawText);
         const transactionDate = dateMatch && dateMatch[1] ? dateMatch[1].trim() : 'Not Found';
 
@@ -148,7 +149,6 @@ app.post('/download-pdf', async (req, res) => {
             extractedData: {
                 accountNumber: accountNumber,
                 totalAmount: totalAmount,
-                // *** הפרמטר החדש מתווסף לכאן ***
                 transactionDate: transactionDate 
             }
         });
