@@ -122,11 +122,15 @@ app.post('/download-pdf', async (req, res) => {
         const accMatch = accNumRegex.exec(rawText);
         const accountNumber = accMatch && accMatch[1] ? accMatch[1].trim() : 'Not Found';
 
-        // *** 🛠️ חילוץ נתון 3: תאריך העסקה (ממוקד ל-'כי ביום' לנטרול כותרת) ***
-        // מחפש את התאריך שמופיע אחרי "כי ביום", עם גמישות לרווחים
-        const dateRegex = /כי ביום\s*(\d{1,2}\/\d{1,2}\/\d{4})/; 
+       // 3. קריאה, ניתוח וחילוץ נתונים
+        // ... (קוד חילוץ מספר חשבון וסכום נשאר ללא שינוי)
+        
+        // *** 🛠️ תיקון חילוץ נתון 3: תאריך העסקה (הגרסה החזקה) ***
+        // מחפש את התאריך שמופיע איפהשהו אחרי "כי ביום", כולל שבירות שורה
+        const dateRegex = /כי ביום[\s\S]*?(\d{1,2}\/\d{1,2}\/\d{4})/; 
         const dateMatch = dateRegex.exec(rawText);
         const transactionDate = dateMatch && dateMatch[1] ? dateMatch[1].trim() : 'Not Found';
+
 
         // *** 🛠️ חילוץ נתון 2: סכום סה"כ לתשלום (עם פסיקים וקידוד הפוך) ***
         const totalAmountRegex = /₪([\d\.\,]+)\s*סה"כ/; 
