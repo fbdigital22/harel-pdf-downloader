@@ -21,7 +21,7 @@ if (!fs.existsSync(DOWNLOAD_PATH)) {
 app.get('/', (req, res) => res.send('PDF Downloader with Data Extraction is Ready'));
 
 app.post('/download-pdf', async (req, res) => {
-    console.log('--- התחלת תהליך (קוד מתוקן לתאריך ספציפי) ---');
+    console.log('--- התחלת תהליך (תיקון תאריך - אותה שורה) ---');
     
     const { ticket, password = '85005' } = req.body; 
 
@@ -60,7 +60,7 @@ app.post('/download-pdf', async (req, res) => {
             downloadPath: DOWNLOAD_PATH,
         });
 
-        // *** השהייה אקראית לפני הכניסה (2-5 שניות ליציבות) ***
+        // השהייה אקראית (2-5 שניות)
         const randomDelay = Math.floor(Math.random() * 3000) + 2000;
         console.log(`Pausing for ${randomDelay}ms to be polite...`);
         await sleep(randomDelay);
@@ -68,13 +68,10 @@ app.post('/download-pdf', async (req, res) => {
         console.log(`Navigating to Harel with ticket: ${ticket}`);
         const url = `https://digital.harel-group.co.il/generic-identification/?ticket=${ticket}`;
         
-        // הגדלת זמן טעינת דף ל-60 שניות
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
         console.log(`Typing agent code: ${password}`);
         const agentCodeSelector = '#tz0';
-        
-        // *** הגדלת זמן ההמתנה לאלמנט ל-60 שניות ***
         await page.waitForSelector(agentCodeSelector, { timeout: 60000 });
         await page.type(agentCodeSelector, password);
 
@@ -84,7 +81,7 @@ app.post('/download-pdf', async (req, res) => {
 
         // 2. המתנה להורדה לדיסק
         let downloadedFile = null;
-        const maxWaitTime = 90000; // עד דקה וחצי
+        const maxWaitTime = 90000; 
         const startTime = Date.now();
 
         while (Date.now() - startTime < maxWaitTime) {
@@ -122,9 +119,9 @@ app.post('/download-pdf', async (req, res) => {
         const accMatch = accNumRegex.exec(rawText);
         const accountNumber = accMatch && accMatch[1] ? accMatch[1].trim() : 'Not Found';
 
-        // *** 🛠️ חילוץ נתון 3: תאריך העסקה (הנכון!) ***
-        // מחפש תאריך שמופיע *לפני* המילים "הננו להודיעך"
-        const dateRegex = /(\d{1,2}\/\d{1,2}\/\d{4})[\s\S]*?הננו\s*להודיעך/; 
+        // *** 🛠️ חילוץ נתון 3: תאריך העסקה (תיקון קריטי) ***
+        // מחפש תאריך שנמצא באותה שורה לפני "הננו להודיעך" (הנקודה . מונעת מעבר שורות)
+        const dateRegex = /(\d{1,2}\/\d{1,2}\/\d{4}).*?הננו להודיעך/; 
         const dateMatch = dateRegex.exec(rawText);
         const transactionDate = dateMatch && dateMatch[1] ? dateMatch[1].trim() : 'Not Found';
 
@@ -136,7 +133,6 @@ app.post('/download-pdf', async (req, res) => {
         console.log(`Extracted Account Number: ${accountNumber}`);
         console.log(`Extracted Total Amount: ${totalAmount}`);
         console.log(`Extracted Transaction Date: ${transactionDate}`);
-
 
         // 4. שליחת התשובה
         const base64Pdf = pdfBuffer.toString('base64');
