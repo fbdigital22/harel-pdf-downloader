@@ -21,7 +21,7 @@ if (!fs.existsSync(DOWNLOAD_PATH)) {
 app.get('/', (req, res) => res.send('PDF Downloader with Data Extraction is Ready'));
 
 app.post('/download-pdf', async (req, res) => {
-    console.log('--- התחלת תהליך (קוד סופי ומושלם) ---');
+    console.log('--- התחלת תהליך (קוד מתוקן לתאריך ספציפי) ---');
     
     const { ticket, password = '85005' } = req.body; 
 
@@ -117,22 +117,18 @@ app.post('/download-pdf', async (req, res) => {
         console.log(rawText.substring(0, 1000));
         console.log('--- RAW TEXT FOR DEBUGGING (End) ---');
         
-        // *** 🛠️ חילוץ נתון 1: מספר חשבון (לפני 'מחשבון') ***
+        // *** חילוץ נתון 1: מספר חשבון ***
         const accNumRegex = /(\d+)מחשבון/; 
         const accMatch = accNumRegex.exec(rawText);
         const accountNumber = accMatch && accMatch[1] ? accMatch[1].trim() : 'Not Found';
 
-       // 3. קריאה, ניתוח וחילוץ נתונים
-        // ... (קוד חילוץ מספר חשבון וסכום נשאר ללא שינוי)
-        
-        // *** 🛠️ תיקון חילוץ נתון 3: תאריך העסקה (הגרסה החזקה) ***
-        // מחפש את התאריך שמופיע איפהשהו אחרי "כי ביום", כולל שבירות שורה
-        const dateRegex = /כי ביום[\s\S]*?(\d{1,2}\/\d{1,2}\/\d{4})/; 
+        // *** 🛠️ חילוץ נתון 3: תאריך העסקה (הנכון!) ***
+        // מחפש תאריך שמופיע *לפני* המילים "הננו להודיעך"
+        const dateRegex = /(\d{1,2}\/\d{1,2}\/\d{4})[\s\S]*?הננו\s*להודיעך/; 
         const dateMatch = dateRegex.exec(rawText);
         const transactionDate = dateMatch && dateMatch[1] ? dateMatch[1].trim() : 'Not Found';
 
-
-        // *** 🛠️ חילוץ נתון 2: סכום סה"כ לתשלום (עם פסיקים וקידוד הפוך) ***
+        // *** חילוץ נתון 2: סכום סה"כ לתשלום ***
         const totalAmountRegex = /₪([\d\.\,]+)\s*סה"כ/; 
         const totalMatch = totalAmountRegex.exec(rawText);
         let totalAmount = totalMatch && totalMatch[1] ? totalMatch[1].trim().replace(/,/g, '') : 'Amount Not Found'; 
